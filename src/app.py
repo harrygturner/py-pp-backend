@@ -1,17 +1,28 @@
 from server import conn
 from flask import Flask, request
+from flask_cors import CORS
 from flask_restful import Api, Resource
 from json import dumps
 from flask_jsonpify import jsonify
+from flask_bcrypt import Bcrypt
 
 from pdb import set_trace as bp
 
 db_connect = conn
 app = Flask(__name__)
+CORS(app)
+bcrypt = Bcrypt(app)
 api = Api(app)
 
 # from routes.kicker import *
 # from routes.team import *
+
+@app.route('/', methods=['GET'])
+def get_db():
+   response = {
+      "API": 'Connected!'
+   }
+   return jsonify(response)
 
 # --------------------- team routes ----------------------
 @app.route('/teams', methods=['GET'])
@@ -166,6 +177,57 @@ def get_kicker_name(id):
    result = cur.fetchone()
    return result[0]
 
+# ------------------- matches ------------------------
+@app.route('/matches/<id>/kick', methods=['POST'])
+def post_kick(id):
+   bp()
+
+# ------------------- user routes ----------------------
+@app.route('/users', methods=['GET'])
+def get_users():
+   cur = db_connect.cursor()
+   cur.execute( "SELECT * FROM users" )
+   result = cur.fetchall()
+   new_format = []
+   for i in result:
+      to_add = {'id': i[0], 'username': i[1], 'password': i[2], 'match_id': i[3], 'status': i[4]}
+      new_format.append(to_add)
+   response = jsonify(new_format)
+   response.status_code = 200
+   return response
+
+@app.route('/users', methods=['POST'])
+def add_user():
+   user = request.json
+   cur = db_connect.cursor()
+   query = """ INSERT INTO users (username, password, status) VALUES (%s,%s,%s); """
+   pw_hash = bcrypt.generate_password_hash(user["password"])
+   records_to_insert = (user["username"], pw_hash, user["status"])
+   cur.execute(query, records_to_insert)
+   db_connect.commit()
+   count = cur.rowcount
+   print (count, "Record inserted successfully into users table")
+   return jsonify({'username': user["username"], 'status': user["status"]})
+
+@app.route('/signin', methods=['POST'])
+def signin():
+   signin_details = request.json
+   cur = db_connect.cursor()
+   # query = " SELECT * FROM users WHERE username = " + str(signin_details["username"])
+   cur.execute("SELECT * FROM users WHERE username = " + str(signin_details["username"]))
+   user = cur.fetchone[0]
+   bp()
+   # if bcrypt.check_password_hash(pw_hash, signin_details["password"])
+
+   # pw_hash = bcrypt.generate_password_hash(user["password"])
+   # records_to_insert = (user["username"], pw_hash, user["status"])
+   # cur.execute(query, records_to_insert)
+   # db_connect.commit()
+   # count = cur.rowcount
+   # print (count, "Record inserted successfully into users table")
+   # return jsonify({'username': user["username"], 'status': user["status"]})
+
+# bcrypt.check_password_hash(pw_hash, 'hunter2') ==> to check password
 
 if __name__ == '__main__':
    app.run(port='3000')
