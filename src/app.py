@@ -5,6 +5,7 @@ from flask_restful import Api, Resource
 from json import dumps
 from flask_jsonpify import jsonify
 from flask_bcrypt import Bcrypt
+# import jwt
 
 from pdb import set_trace as bp
 
@@ -23,6 +24,11 @@ def get_db():
       "API": 'Connected!'
    }
    return jsonify(response)
+
+# ------------------- security --------------------
+
+# def issue_token(data):
+#       jwt.encode(data, secret)
 
 # --------------------- team routes ----------------------
 @app.route('/teams', methods=['GET'])
@@ -154,7 +160,16 @@ def get_match(id):
    cur.execute( "SELECT * FROM match WHERE id = " + str(id) ) 
    result = cur.fetchone() 
    match_kicks = get_match_kicks(id)
-   new_format = {'id': result[0], 'home_team': get_team_name(result[1]), 'away_team': get_team_name(result[2]), 'home_score': result[3], 'away_score': result[4], 'kicks': match_kicks}
+   new_format = {
+      'id': result[0], 
+      'home_team': get_team_name(result[1]), 
+      'home_kickers': get_team_kickers(result[1]),
+      'away_team': get_team_name(result[2]), 
+      'away_kickers': get_team_kickers(result[2]),
+      'home_score': result[3], 
+      'away_score': result[4], 
+      'kicks': match_kicks
+   }
 
    response = jsonify(new_format)
    response.status_code = 200
@@ -201,33 +216,34 @@ def add_user():
    user = request.json
    cur = db_connect.cursor()
    query = """ INSERT INTO users (username, password, status) VALUES (%s,%s,%s); """
-   pw_hash = bcrypt.generate_password_hash(user["password"])
+   pw_hash = bcrypt.generate_password_hash(user["password"]).decode('utf-8')
    records_to_insert = (user["username"], pw_hash, user["status"])
    cur.execute(query, records_to_insert)
    db_connect.commit()
    count = cur.rowcount
    print (count, "Record inserted successfully into users table")
-   return jsonify({'username': user["username"], 'status': user["status"]})
+   return jsonify({
+      'username': user["username"], 
+      'status': user["status"]
+   })
 
 @app.route('/signin', methods=['POST'])
 def signin():
    signin_details = request.json
    cur = db_connect.cursor()
-   # query = " SELECT * FROM users WHERE username = " + str(signin_details["username"])
-   cur.execute("SELECT * FROM users WHERE username = " + str(signin_details["username"]))
-   user = cur.fetchone[0]
-   bp()
-   # if bcrypt.check_password_hash(pw_hash, signin_details["password"])
-
-   # pw_hash = bcrypt.generate_password_hash(user["password"])
-   # records_to_insert = (user["username"], pw_hash, user["status"])
-   # cur.execute(query, records_to_insert)
-   # db_connect.commit()
-   # count = cur.rowcount
-   # print (count, "Record inserted successfully into users table")
-   # return jsonify({'username': user["username"], 'status': user["status"]})
-
-# bcrypt.check_password_hash(pw_hash, 'hunter2') ==> to check password
+   username = signin_details["username"]
+   query = """ SELECT * FROM users WHERE username = %s """
+   cur.execute(query, (username,))
+   user = cur.fetchone()
+   if user and bcrypt.check_password_hash(user[2], signin_details["password"]):
+      return jsonify({
+         'message':'All credentials correct', 
+         'username': user[1], 
+         'status': user[4], 
+         'match_id': user[3]
+      })
+   else:
+      return jsonify({'error': 'Username/password combination invalid.'})
 
 if __name__ == '__main__':
    app.run(port='3000')
