@@ -5,7 +5,9 @@ from flask_restful import Api, Resource
 from json import dumps
 from flask_jsonpify import jsonify
 from flask_bcrypt import Bcrypt
-# import jwt
+import jwt
+import datetime
+from functools import wraps
 
 from pdb import set_trace as bp
 
@@ -14,6 +16,8 @@ app = Flask(__name__)
 CORS(app)
 bcrypt = Bcrypt(app)
 api = Api(app)
+
+app.config['SECRET_KEY'] = 'somethingsecret'
 
 # from routes.kicker import *
 # from routes.team import *
@@ -27,8 +31,27 @@ def get_db():
 
 # ------------------- security --------------------
 
-# def issue_token(data):
-#       jwt.encode(data, secret)
+def issue_token(data):
+   return jwt.encode({'id': data, 'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=12)}, app.config['SECRET_KEY'])
+
+def token_required(f):
+   @wraps(f)
+   def decorated(*args, **kwargs):
+      token = None 
+
+      if 'x-access-token' in request.headers:
+         token = request.headers['x-access-token']
+      if not token:
+         return jsonify({ 'message': 'Token is missing' }), 401
+
+      try: 
+         data = jwt.decode(token, app.config['SECRET_KEY'])
+         current_user = get_user(data.id)
+      except:
+         return jsonify({ 'message': 'Token is invalid' }), 403
+
+      return f(current_user, *args, **kwargs)
+   return decorated
 
 # --------------------- team routes ----------------------
 @app.route('/teams', methods=['GET'])
@@ -211,6 +234,23 @@ def get_users():
    response.status_code = 200
    return response
 
+@app.route('/users/<id>', methods=['GET'])
+def get_user(id):
+   cur = db_connect.cursor()
+   cur.execute( "SELECT * FROM users WHERE id = " + str(id) ) 
+   result = cur.fetchone() 
+   new_format = {
+      'id': result[0], 
+      'username': result[1],
+      'password': result[2],
+      'match_id': result[3],
+      'status': result[4]   
+   }
+
+   response = jsonify(new_format)
+   response.status_code = 200
+   return response
+
 @app.route('/users', methods=['POST'])
 def add_user():
    user = request.json
@@ -236,11 +276,14 @@ def signin():
    cur.execute(query, (username,))
    user = cur.fetchone()
    if user and bcrypt.check_password_hash(user[2], signin_details["password"]):
+      token = issue_token(user[0])
       return jsonify({
          'message':'All credentials correct', 
+         'id': user[0],
          'username': user[1], 
          'status': user[4], 
-         'match_id': user[3]
+         'match_id': user[3],
+         'token': token.decode('UTF-8')
       })
    else:
       return jsonify({'error': 'Username/password combination invalid.'})
