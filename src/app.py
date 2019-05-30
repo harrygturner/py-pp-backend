@@ -197,7 +197,8 @@ def get_matches():
 @app.route('/matches/<id>', methods=['GET'])
 def get_match(id):
    cur = db_connect.cursor()
-   cur.execute( "SELECT * FROM match WHERE id = " + str(id) ) 
+   query = """SELECT * FROM match WHERE id = %s"""
+   cur.execute(query, (id,) ) 
    result = cur.fetchone() 
    cur.close()
    match_kicks = get_match_kicks(id)
@@ -219,7 +220,6 @@ def get_match(id):
 @app.route('/matches/<id>', methods=['PUT'])
 def edit_match_score(id):
    req =  request.json
-   bp()
    cur = db_connect.cursor()
    query = """ UPDATE match SET home_score = %s, away_score = %s WHERE id = """ + id
    records_to_insert = (req['home_score'], req['away_score'])
@@ -275,11 +275,25 @@ def post_kick(id):
    response = cur.fetchone()
    db_connect.commit()
    count = cur.rowcount
-   print (count, "Record inserted successfully into kick table")
+   print (response[0], "Kick id inserted successfully into kick table")
    cur.close()
    return jsonify({
       'kick_id': response[0], 
    })
+
+@app.route('/matches/<id>/kick/<kick_id>', methods=['PUT'])
+def edit_kick(id, kick_id):
+   req =  request.json
+   cur = db_connect.cursor()
+   query = """ UPDATE kick SET successful = %s WHERE id = """ + kick_id
+   records_to_insert = (req['successful'],)
+   cur.execute(query, records_to_insert) 
+   db_connect.commit()
+   cur.close()
+
+   response = jsonify({ 'message': 'Kick outcome succesfully updated' })
+   response.status_code = 200
+   return response
 
 # ------------------- user routes ----------------------
 @app.route('/users', methods=['GET'])
