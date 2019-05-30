@@ -21,6 +21,7 @@ app.config['SECRET_KEY'] = 'somethingsecret'
 
 # from routes.kicker import *
 # from routes.team import *
+from calcPressure import pressure_calculator
 
 @app.route('/', methods=['GET'])
 def get_db():
@@ -263,13 +264,27 @@ def find_kicker_id(name):
 @app.route('/matches/<id>/kick', methods=['POST'])
 def post_kick(id):
    kick_details = request.json
+   pressure_value = pressure_calculator(
+      kick_details['distance'], 
+      kick_details['angle'], 
+      kick_details['game_time'], 
+      kick_details['wind_direction'],
+      kick_details['wind_strength']
+   )
+
    cur = db_connect.cursor()
-   query = """ INSERT INTO kick (kicker_id, match_id, distance, angle) VALUES (%s,%s,%s,%s) RETURNING id; """
+   query = """ 
+      INSERT INTO kick (kicker_id, match_id, distance, angle, game_time, pressure_score) 
+      VALUES (%s,%s,%s,%s,%s, %s) 
+      RETURNING id; 
+   """
    records_to_insert = (
       find_kicker_id(kick_details['kicker']), 
       kick_details['match_id'], 
       kick_details['distance'], 
-      kick_details['angle']
+      kick_details['angle'],
+      kick_details['game_time'],
+      pressure_value
    )
    cur.execute(query, records_to_insert)
    response = cur.fetchone()
@@ -279,6 +294,7 @@ def post_kick(id):
    cur.close()
    return jsonify({
       'kick_id': response[0], 
+      'pressure_value': pressure_value
    })
 
 @app.route('/matches/<id>/kick/<kick_id>', methods=['PUT'])
